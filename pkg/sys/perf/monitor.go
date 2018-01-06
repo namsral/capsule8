@@ -15,16 +15,19 @@
 package perf
 
 import (
+	"bufio"
 	"bytes"
 	"debug/elf"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode"
 
@@ -1185,6 +1188,63 @@ func (monitor *EventMonitor) initializeGroupLeaders(pid int, flags uintptr, ring
 	return nil
 }
 
+func doProbeCleanup(tracingDir, eventsFile string, activePids, deadPids map[int]bool) {
+	eventsFilename := filepath.Join(tracingDir, eventsFile)
+	data, err := ioutil.ReadFile(eventsFilename)
+	if err != nil {
+		return
+	}
+
+	var file *os.File
+
+	// Read one line at a time and check for capsule8/sensor_ probes. The
+	// pid that created the probe is encoded within. If the pid is dead,
+	// remove the probe.
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	for scanner.Scan() {
+		line := scanner.Text()
+		name := line[2:strings.Index(line, " ")]
+		if !strings.HasPrefix(name, "capsule8/sensor_") {
+			continue
+		}
+
+		// Capsule8 sensor names are of the form sensor_<pid>_<count>
+		var pid int
+		fmt.Sscanf(name, "capsule8/sensor_%d_", &pid)
+		if activePids[pid] {
+			continue
+		} else if !deadPids[pid] {
+			if syscall.Kill(pid, 0) != syscall.ESRCH {
+				activePids[pid] = true
+				continue
+			}
+			deadPids[pid] = true
+		}
+
+		cmd := fmt.Sprintf("-:%s\n", name)
+		if file == nil {
+			file, err = os.OpenFile(eventsFilename, os.O_WRONLY|os.O_APPEND, 0)
+			if err != nil {
+				glog.Errorf("Couldn't open %s WO+A: %s", eventsFilename, err)
+				return
+			}
+			defer file.Close()
+		}
+		file.Write([]byte(cmd))
+		glog.V(1).Infof("Removed stale probe from %s: %s", eventsFile, name)
+	}
+}
+
+func cleanupStaleProbes(tracingDir string) {
+	activePids := make(map[int]bool)
+	deadPids := make(map[int]bool)
+
+	activePids[os.Getpid()] = true
+
+	doProbeCleanup(tracingDir, "kprobe_events", activePids, deadPids)
+	doProbeCleanup(tracingDir, "uprobe_events", activePids, deadPids)
+}
+
 // NewEventMonitor creates a new EventMonitor instance in the stopped state.
 // Once an EventMonitor instance is returned from this function, its Close
 // method must be called to clean it up gracefully, even if no events are
@@ -1216,6 +1276,7 @@ func NewEventMonitor(options ...EventMonitorOption) (*EventMonitor, error) {
 	if len(opts.tracingDir) == 0 {
 		opts.tracingDir = sys.TracingDir()
 	}
+	cleanupStaleProbes(opts.tracingDir)
 
 	// If no perf_event cgroup mountpoint was specified, scan mounts for one
 	if len(opts.perfEventDir) == 0 && len(opts.cgroups) > 0 {
