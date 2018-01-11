@@ -185,11 +185,11 @@ func (s *Sensor) dispatchSample(eventID uint64, sample interface{}, err error) {
 
 	if event, ok := sample.(*api.TelemetryEvent); ok && event != nil {
 		eventMap := s.eventMap.getMap()
-		if sub, ok := eventMap[eventID]; ok && sub != nil {
-			if sub.data != nil {
-				sub.data <- event
+		eventMap.forEach(func(eventID, subscriptionID uint64, s *subscription) {
+			if s.data != nil {
+				s.data <- event
 			}
-		}
+		})
 	}
 }
 
@@ -432,10 +432,11 @@ func (s *Sensor) createPerfEventStream(sub *api.Subscription) (*stream.Stream, e
 	ctrl := make(chan interface{})
 	data := make(chan interface{}, config.Sensor.ChannelBufferLength)
 
-	for eventID := range eventMap {
-		eventSub := eventMap[eventID]
-		eventSub.data = data
-	}
+	eventMap.forEach(func(eventID, subscriptionID uint64, s *subscription) {
+		s.data = data
+	})
+	subscriptionID := s.eventMap.subscribe(eventMap)
+	glog.V(2).Infof("Subscription %d registered", subscriptionID)
 
 	go func() {
 		defer close(data)
@@ -443,22 +444,18 @@ func (s *Sensor) createPerfEventStream(sub *api.Subscription) (*stream.Stream, e
 		for {
 			_, ok := <-ctrl
 			if !ok {
-				glog.V(2).Info("Control channel closed")
+				glog.V(2).Infof("Subscription %d control channel closed",
+					subscriptionID)
 
-				// Remove from .eventMap first so that any
-				// pending events being processed get discarded
-				// as quickly as possible. Then remove the
-				// events from the EventMonitor
-				s.eventMap.remove(eventMap)
-				for eventID := range eventMap {
-					s.monitor.UnregisterEvent(eventID)
-				}
+				s.eventMap.unsubscribe(subscriptionID,
+					func(eventID uint64) {
+						s.monitor.UnregisterEvent(eventID)
+					})
 				return
 			}
 		}
 	}()
 
-	s.eventMap.update(eventMap)
 	for eventID := range eventMap {
 		s.monitor.Enable(eventID)
 	}

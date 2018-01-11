@@ -271,13 +271,12 @@ func registerSyscallEvents(sensor *Sensor, eventMap subscriptionMap, events []*a
 		if err != nil {
 			glog.V(1).Infof("Couldn't register syscall enter kprobe: %v", err)
 		} else {
-			eventMap[eventID] = &subscription{
-				unregister: func(uint64, *subscription) {
-					eventID := sensor.dummySyscallEventID
-					if atomic.AddInt64(&sensor.dummySyscallEventCount, -1) == 0 {
-						sensor.monitor.UnregisterEvent(eventID)
-					}
-				},
+			s := eventMap.subscribe(eventID)
+			s.unregister = func(uint64, *subscription) {
+				eventID := sensor.dummySyscallEventID
+				if atomic.AddInt64(&sensor.dummySyscallEventCount, -1) == 0 {
+					sensor.monitor.UnregisterEvent(eventID)
+				}
 			}
 		}
 	}
@@ -295,7 +294,7 @@ func registerSyscallEvents(sensor *Sensor, eventMap subscriptionMap, events []*a
 		if err != nil {
 			glog.V(1).Infof("Couldn't get %s event id: %v", eventName, err)
 		} else {
-			eventMap[eventID] = &subscription{}
+			eventMap.subscribe(eventID)
 		}
 	}
 }

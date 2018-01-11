@@ -157,6 +157,6 @@ func registerKernelEvents(sensor *Sensor, eventMap subscriptionMap, events []*ap
 				f.symbol, loc, f.fetchargs(), err)
 			continue
 		}
-		eventMap[eventID] = &subscription{}
+		eventMap.subscribe(eventID)
 	}
 }

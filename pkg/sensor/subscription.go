@@ -28,70 +28,134 @@ type subscription struct {
 
 //
 // safeSubscriptionMap
-// map[uint64]chan interface{}
+// map[uint64]map[uint64]*subscription
 //
 
-type subscriptionMap map[uint64]*subscription
+type subscriptionMap map[uint64]map[uint64]*subscription
 
 func newSubscriptionMap() subscriptionMap {
 	return make(subscriptionMap)
 }
 
+const dummySubscriptionID = ^uint64(0) // 0xffffffffffffffff
+
+func (sm subscriptionMap) subscribe(eventID uint64) *subscription {
+	im, ok := sm[eventID]
+	if !ok {
+		im = make(map[uint64]*subscription)
+		sm[eventID] = im
+	}
+	if s, ok := im[dummySubscriptionID]; ok {
+		return s
+	}
+
+	s := &subscription{}
+	im[dummySubscriptionID] = s
+	return s
+}
+
+func (sm subscriptionMap) forEach(f func(uint64, uint64, *subscription)) {
+	for eventID, im := range sm {
+		for subscriptionID, s := range im {
+			f(eventID, subscriptionID, s)
+		}
+	}
+}
+
 type safeSubscriptionMap struct {
-	sync.Mutex              // used only by writers
-	active     atomic.Value // map[uint64]chan interface{}
+	sync.Mutex                      // used only by writers
+	active             atomic.Value // map[uint64]map[uint64]*subscription
+	nextSubscriptionID uint64
 }
 
 func newSafeSubscriptionMap() *safeSubscriptionMap {
 	return &safeSubscriptionMap{}
 }
 
-func (m *safeSubscriptionMap) getMap() subscriptionMap {
-	value := m.active.Load()
+func (ssm *safeSubscriptionMap) getMap() subscriptionMap {
+	value := ssm.active.Load()
 	if value == nil {
 		return nil
 	}
 	return value.(subscriptionMap)
 }
 
-func (m *safeSubscriptionMap) remove(mfrom subscriptionMap) {
-	m.Lock()
-	defer m.Unlock()
+func (ssm *safeSubscriptionMap) subscribe(fm subscriptionMap) uint64 {
+	ssm.Lock()
+	defer ssm.Unlock()
 
-	r := make(subscriptionMap, len(mfrom))
+	ssm.nextSubscriptionID++
+	subscriptionID := ssm.nextSubscriptionID
 
-	om := m.getMap()
+	om := ssm.getMap()
+	nm := make(subscriptionMap, len(om)+len(fm))
+
 	if om != nil {
-		nm := make(subscriptionMap, len(om)-len(mfrom))
 		for k, v := range om {
-			if _, ok := mfrom[k]; !ok {
-				nm[k] = v
-			} else if v.unregister != nil {
-				r[k] = v
+			c := make(map[uint64]*subscription, len(v))
+			for k2, v2 := range v {
+				c[k2] = v2
 			}
+			nm[k] = c
 		}
-		m.active.Store(nm)
 	}
 
-	for eventID, eventSub := range r {
-		eventSub.unregister(eventID, eventSub)
+	for eventID, newSubscriptionMap := range fm {
+		subscriptionMap, ok := nm[eventID]
+		if !ok {
+			subscriptionMap = make(map[uint64]*subscription)
+			nm[eventID] = subscriptionMap
+		}
+		for _, s := range newSubscriptionMap {
+			subscriptionMap[subscriptionID] = s
+		}
 	}
+
+	ssm.active.Store(nm)
+	return subscriptionID
 }
 
-func (m *safeSubscriptionMap) update(mfrom subscriptionMap) {
-	m.Lock()
-	defer m.Unlock()
+func (ssm *safeSubscriptionMap) unsubscribe(
+	subscriptionID uint64,
+	f func(uint64),
+) {
+	var deadEventIDs []uint64
+	deadSubscriptions := make(map[uint64]*subscription)
 
-	om := m.getMap()
-	nm := make(subscriptionMap, len(om)+len(mfrom))
+	ssm.Lock()
+
+	om := ssm.getMap()
 	if om != nil {
-		for k, v := range om {
-			nm[k] = v
+		nm := make(subscriptionMap, len(om))
+		for eventID, v := range om {
+			var m map[uint64]*subscription
+			for ID, s := range v {
+				if ID != subscriptionID {
+					if m == nil {
+						m = make(map[uint64]*subscription)
+					}
+					m[ID] = s
+				} else if s.unregister != nil {
+					deadSubscriptions[eventID] = s
+				}
+			}
+			if m == nil {
+				deadEventIDs = append(deadEventIDs, eventID)
+			} else {
+				nm[eventID] = m
+			}
+		}
+		ssm.active.Store(nm)
+	}
+
+	ssm.Unlock()
+
+	for eventID, s := range deadSubscriptions {
+		s.unregister(eventID, s)
+	}
+	if f != nil {
+		for _, eventID := range deadEventIDs {
+			f(eventID)
 		}
 	}
-	for k, v := range mfrom {
-		nm[k] = v
-	}
-
-	m.active.Store(nm)
 }

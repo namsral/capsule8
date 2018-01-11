@@ -137,7 +137,7 @@ func registerFileEvents(sensor *Sensor, eventMap subscriptionMap, events []*api.
 	eventID, err := sensor.monitor.RegisterTracepoint("fs/do_sys_open", f.decodeDoSysOpen,
 		perf.WithFilter(filterString))
 	if err != nil {
-		glog.V(1).Infof("Tracepoint fs/do_sys_open not found, adding a kprobe to emulate")
+		glog.V(1).Infof("Tracepoint fs/do_sys_open not found; adding a kprobe to emulate it")
 
 		eventID, err = sensor.monitor.RegisterKprobe(
 			fsDoSysOpenKprobeAddress,
@@ -151,5 +151,5 @@ func registerFileEvents(sensor *Sensor, eventMap subscriptionMap, events []*api.
 		}
 	}
 
-	eventMap[eventID] = &subscription{}
+	eventMap.subscribe(eventID)
 }

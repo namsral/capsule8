@@ -309,7 +309,7 @@ func registerEvent(monitor *perf.EventMonitor, eventMap subscriptionMap, name st
 	if err != nil {
 		glog.Warningf("Could not register tracepoint %s: %v", name, err)
 	} else {
-		eventMap[eventID] = &subscription{}
+		eventMap.subscribe(eventID)
 	}
 }
 
@@ -324,7 +324,7 @@ func registerKprobe(monitor *perf.EventMonitor, eventMap subscriptionMap, symbol
 	if err != nil {
 		glog.Warningf("Could not register network kprobe %s", symbol)
 	} else {
-		eventMap[eventID] = &subscription{}
+		eventMap.subscribe(eventID)
 	}
 }
 

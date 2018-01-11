@@ -222,7 +222,7 @@ func registerProcessEvents(sensor *Sensor, eventMap subscriptionMap, events []*a
 			glog.V(1).Infof("Couldn't get %s event id: %v",
 				eventName, err)
 		} else {
-			eventMap[eventID] = &subscription{}
+			eventMap.subscribe(eventID)
 		}
 	}
 
@@ -236,7 +236,7 @@ func registerProcessEvents(sensor *Sensor, eventMap subscriptionMap, events []*a
 			glog.V(1).Infof("Couldn't get %s event id: %v",
 				eventName, err)
 		} else {
-			eventMap[eventID] = &subscription{}
+			eventMap.subscribe(eventID)
 		}
 	}
 
@@ -250,7 +250,7 @@ func registerProcessEvents(sensor *Sensor, eventMap subscriptionMap, events []*a
 			glog.Errorf("Couldn't register kprobe for %s: %s",
 				exitSymbol, err)
 		} else {
-			eventMap[eventID] = &subscription{}
+			eventMap.subscribe(eventID)
 		}
 	}
 }
