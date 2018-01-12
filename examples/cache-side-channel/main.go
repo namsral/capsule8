@@ -16,8 +16,8 @@ package main
 
 import (
 	"flag"
-	"runtime"
 	"log"
+	"runtime"
 
 	"github.com/capsule8/capsule8/pkg/sys/perf"
 )
@@ -58,7 +58,7 @@ func main() {
 	flag.Set("logtostderr", "true")
 	flag.Parse()
 
-	log.Println("Starting Capsule8 cache side channel detector")
+	log.Println("[INFO] Starting Capsule8 cache side channel detector")
 
 	//
 	// Create our event group to read LL cache accesses and misses
@@ -105,7 +105,7 @@ func main() {
 	// Allocate counters per CPU
 	cpuCounters = make([]eventCounters, runtime.NumCPU())
 
-	log.Println("Monitoring for cache side channels")
+	log.Println("[INFO] Monitoring for cache side channels")
 	eg.Run(func(sample perf.Sample) {
 		sr, ok := sample.Record.(*perf.SampleRecord)
 		if ok {
@@ -145,13 +145,13 @@ func alarm(sr *perf.SampleRecord, counters eventCounters) {
 	LLCLoadMissRate := float32(counters.LLCLoadMisses) / float32(counters.LLCLoads)
 
 	if LLCLoadMissRate > alarmThresholdError {
-		log.Println("Error: cpu=%v pid=%v tid=%v LLCLoadMissRate=%v",
+		log.Printf("[ERROR] cpu=%v pid=%v tid=%v LLCLoadMissRate=%v",
 			sr.CPU, sr.Pid, sr.Tid, LLCLoadMissRate)
 	} else if LLCLoadMissRate > alarmThresholdWarning {
-		log.Println("WARNING: cpu=%v pid=%v tid=%v LLCLoadMissRate=%v",
+		log.Printf("[WARN] cpu=%v pid=%v tid=%v LLCLoadMissRate=%v",
 			sr.CPU, sr.Pid, sr.Tid, LLCLoadMissRate)
 	} else if LLCLoadMissRate > alarmThresholdInfo {
-		log.Println("INFO: cpu=%v pid=%v tid=%v LLCLoadMissRate=%v",
+		log.Printf("[INFO] cpu=%v pid=%v tid=%v LLCLoadMissRate=%v",
 			sr.CPU, sr.Pid, sr.Tid, LLCLoadMissRate)
 	}
 }
