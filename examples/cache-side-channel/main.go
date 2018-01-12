@@ -19,7 +19,7 @@ import (
 	"log"
 	"runtime"
 
-	"github.com/capsule8/capsule8/pkg/sys/perf"
+	"github.com/namsral/capsule8/pkg/sys/perf"
 )
 
 const (
