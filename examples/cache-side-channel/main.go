@@ -16,10 +16,10 @@ package main
 
 import (
 	"flag"
+	"log"
 	"runtime"
 
-	"github.com/capsule8/capsule8/pkg/sys/perf"
-	"github.com/golang/glog"
+	"github.com/namsral/capsule8/pkg/sys/perf"
 )
 
 const (
@@ -58,7 +58,7 @@ func main() {
 	flag.Set("logtostderr", "true")
 	flag.Parse()
 
-	glog.Infof("Starting Capsule8 cache side channel detector")
+	log.Println("[INFO] Starting Capsule8 cache side channel detector")
 
 	//
 	// Create our event group to read LL cache accesses and misses
@@ -91,7 +91,7 @@ func main() {
 
 	eg, err := perf.NewEventGroup(eventGroup)
 	if err != nil {
-		glog.Fatal(err)
+		log.Fatal(err)
 	}
 
 	//
@@ -99,13 +99,13 @@ func main() {
 	//
 	err = eg.Open()
 	if err != nil {
-		glog.Fatal(err)
+		log.Fatal(err)
 	}
 
 	// Allocate counters per CPU
 	cpuCounters = make([]eventCounters, runtime.NumCPU())
 
-	glog.Info("Monitoring for cache side channels")
+	log.Println("[INFO] Monitoring for cache side channels")
 	eg.Run(func(sample perf.Sample) {
 		sr, ok := sample.Record.(*perf.SampleRecord)
 		if ok {
@@ -145,13 +145,13 @@ func alarm(sr *perf.SampleRecord, counters eventCounters) {
 	LLCLoadMissRate := float32(counters.LLCLoadMisses) / float32(counters.LLCLoads)
 
 	if LLCLoadMissRate > alarmThresholdError {
-		glog.Errorf("cpu=%v pid=%v tid=%v LLCLoadMissRate=%v",
+		log.Printf("[ERROR] cpu=%v pid=%v tid=%v LLCLoadMissRate=%v",
 			sr.CPU, sr.Pid, sr.Tid, LLCLoadMissRate)
 	} else if LLCLoadMissRate > alarmThresholdWarning {
-		glog.Warningf("cpu=%v pid=%v tid=%v LLCLoadMissRate=%v",
+		log.Printf("[WARN] cpu=%v pid=%v tid=%v LLCLoadMissRate=%v",
 			sr.CPU, sr.Pid, sr.Tid, LLCLoadMissRate)
 	} else if LLCLoadMissRate > alarmThresholdInfo {
-		glog.Infof("cpu=%v pid=%v tid=%v LLCLoadMissRate=%v",
+		log.Printf("[INFO] cpu=%v pid=%v tid=%v LLCLoadMissRate=%v",
 			sr.CPU, sr.Pid, sr.Tid, LLCLoadMissRate)
 	}
 }
